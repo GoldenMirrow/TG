@@ -1,0 +1,58 @@
+# Dependencias
+node_modules/
+.pnpm-store/
+
+# Sesion de Telegram
+*.session
+session/
+.session
+
+# Lockfiles de otros gestores (usamos pnpm)
+package-lock.json
+yarn.lock
+
+# Sesión de WhatsApp (¡CRÍTICO - no subir!)
+wa_auth/
+auth_info_baileys/
+.baileys/
+
+# Base de datos local
+files.db
+*.sqlite
+*.sqlite3
+
+# Archivos descargados / temporales
+downloads/
+temp/
+tmp/
+*.tmp
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Variables de entorno y secretos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+config.local.json
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Caché
+.cache/
+.pnpm-debug.log
