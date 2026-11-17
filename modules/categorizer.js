@@ -1,13 +1,24 @@
 /**
- * categorizer.js — Clasificación de archivos por categoría
+ * categorizer.js — Clasificación de archivos por categoría + filtro de basura
  *
  * Sin dependencias. Usa 3 señales en cascada:
  *   1. Extensión del nombre
  *   2. MIME type (si el nombre es inútil)
  *   3. Palabras clave en el nombre (último recurso)
  *
- * Además exporta `isIndexable(msg)` para descartar stickers, GIFs,
- * videos redondos y notas de voz antes de tocar la DB.
+ * Filtro `isIndexable` (descarta basura antes de tocar la DB):
+ *   - Stickers, GIFs animados, videos redondos, notas de voz
+ *   - Tamaño mínimo POR CATEGORÍA:
+ *       • libros → 1 MB  (PDFs/CBZ/EPUB pueden ser pequeños)
+ *       • videos → 10 MB (memes/clips → fuera)
+ *       • resto  → 10 MB
+ *   - Duración mínima para videos: 3 min (180 s) → corta trailers
+ *
+ * Umbrales configurables vía .env:
+ *   MIN_VIDEO_MB=10
+ *   MIN_VIDEO_SEC=180
+ *   MIN_BOOK_MB=1
+ *   MIN_GENERIC_MB=10
  */
 
 // ────────────────────────────────────────────────────────────
@@ -80,6 +91,20 @@ for (const [cat, exts] of Object.entries(EXT_MAP)) {
 }
 
 // ────────────────────────────────────────────────────────────
+// UMBRALES (configurables por .env)
+// ────────────────────────────────────────────────────────────
+const MIN_VIDEO_MB   = parseFloat(process.env.MIN_VIDEO_MB)   || 10;
+const MIN_VIDEO_SEC  = parseInt(process.env.MIN_VIDEO_SEC, 10) || 180;   // 3 min
+const MIN_BOOK_MB    = parseFloat(process.env.MIN_BOOK_MB)    || 1;
+const MIN_GENERIC_MB = parseFloat(process.env.MIN_GENERIC_MB) || 10;
+
+function minSizeMBFor(category) {
+  if (category === 'libros') return MIN_BOOK_MB;
+  if (category === 'videos') return MIN_VIDEO_MB;
+  return MIN_GENERIC_MB;
+}
+
+// ────────────────────────────────────────────────────────────
 // MIME → categoría (fallback)
 // ────────────────────────────────────────────────────────────
 function categorizeByMime(mime) {
@@ -123,9 +148,6 @@ function categorizeByMime(mime) {
 // HEURÍSTICA POR NOMBRE (último recurso)
 // ────────────────────────────────────────────────────────────
 function normalizeName(name) {
-  // _ - . son separadores comunes en nombres de archivo,
-  // pero en regex son "word chars". Los convertimos a espacios
-  // para que \b funcione como esperamos.
   return name.toLowerCase().replace(/[._\-]+/g, ' ');
 }
 
@@ -166,8 +188,8 @@ function getExtension(fileName) {
 // ────────────────────────────────────────────────────────────
 /**
  * Clasifica un archivo por extensión → MIME → heurística de nombre.
- * @param {string} fileName  Nombre original del archivo
- * @param {string} [mimeType]  MIME type si lo tenemos
+ * @param {string} fileName
+ * @param {string} [mimeType]
  * @returns {{ category: string, extension: string, source: string }}
  */
 function categorize(fileName, mimeType) {
@@ -194,77 +216,113 @@ function categorize(fileName, mimeType) {
 // FILTRO: ¿este mensaje contiene un archivo indexable?
 // ────────────────────────────────────────────────────────────
 /**
- * Descarta stickers, GIFs animados, videos redondos y notas de voz.
- * Esos también vienen como `msg.document` en GramJS pero NO son archivos
- * que el usuario quiera indexar.
+ * Descarta basura antes de tocar la DB:
+ *   • Stickers / GIFs animados / videos redondos / notas de voz
+ *   • Tamaño mínimo por categoría:
+ *       libros → 1 MB (PDF/CBZ/EPUB pequeños son válidos)
+ *       videos → 10 MB
+ *       resto  → 10 MB
+ *   • Duración mínima para videos: 3 min (corta trailers, memes, clips)
  *
  * @param {object} msg  Mensaje de GramJS
- * @returns {{ ok: boolean, reason: string, fileName?: string }}
+ * @returns {{ ok: boolean, reason: string, fileName?: string, category?: string, extension?: string }}
  */
 function isIndexable(msg) {
   const doc = msg && msg.document;
   if (!doc) return { ok: false, reason: 'no-document' };
 
   const attrs = doc.attributes || [];
-  const typeNames = attrs.map(
-    (a) => a.className || a.constructor?.name || ''
-  );
+  const typeNames = attrs.map(a => a.className || a.constructor?.name || '');
 
-  // Stickers (webp, webm, tgs)
-  if (typeNames.some((t) => t.includes('DocumentAttributeSticker'))) {
+  // ── Stickers (webp, webm, tgs)
+  if (typeNames.some(t => t.includes('DocumentAttributeSticker'))) {
     return { ok: false, reason: 'sticker' };
   }
 
-  // GIFs animados
-  if (typeNames.some((t) => t.includes('DocumentAttributeAnimated'))) {
+  // ── GIFs animados
+  if (typeNames.some(t => t.includes('DocumentAttributeAnimated'))) {
     return { ok: false, reason: 'animated-gif' };
   }
 
-  // Videos redondos (video-note)
-  const videoAttr = attrs.find(
-    (a) => (a.className || a.constructor?.name || '').includes('DocumentAttributeVideo')
+  // ── Videos redondos (video-note)
+  const videoAttr = attrs.find(a =>
+    (a.className || a.constructor?.name || '').includes('DocumentAttributeVideo')
   );
   if (videoAttr && videoAttr.roundMessage) {
     return { ok: false, reason: 'round-video' };
   }
 
-  // Notas de voz
-  const audioAttr = attrs.find(
-    (a) => (a.className || a.constructor?.name || '').includes('DocumentAttributeAudio')
+  // ── Notas de voz
+  const audioAttr = attrs.find(a =>
+    (a.className || a.constructor?.name || '').includes('DocumentAttributeAudio')
   );
   if (audioAttr && audioAttr.voice) {
     return { ok: false, reason: 'voice-note' };
   }
 
-  const nameAttr = attrs.find((a) => a.fileName);
+  const nameAttr = attrs.find(a => a.fileName);
   const fileName = nameAttr?.fileName;
 
-  // Nombre genérico "sticker.*"
+  // ── Nombre genérico "sticker.*"
   if (fileName && /^sticker\./i.test(fileName)) {
     return { ok: false, reason: 'sticker-name' };
   }
 
-  // Sin nombre + tamaño ridículo → basura
-  if (!fileName && (doc.size || 0) < 50 * 1024) {
+  // ── Categorizar (necesario para conocer el umbral correcto)
+  const cat = categorize(fileName || '', doc.mimeType);
+  const sizeBytes = Number(doc.size) || 0;
+  const minMB = minSizeMBFor(cat.category);
+  const minBytes = minMB * 1024 * 1024;
+
+  // ── Tamaño mínimo según categoría
+  if (sizeBytes > 0 && sizeBytes < minBytes) {
+    const mb = (sizeBytes / 1024 / 1024).toFixed(2);
+    return {
+      ok: false,
+      reason: `${cat.category}-too-small (${mb}MB < ${minMB}MB)`,
+    };
+  }
+
+  // ── Duración mínima solo para videos
+  if (cat.category === 'videos' && videoAttr) {
+    const durSec = Number(videoAttr.duration) || 0;
+    if (durSec > 0 && durSec < MIN_VIDEO_SEC) {
+      const mins = (durSec / 60).toFixed(1);
+      const targetMin = (MIN_VIDEO_SEC / 60).toFixed(0);
+      return {
+        ok: false,
+        reason: `video-too-short (${mins}min < ${targetMin}min)`,
+      };
+    }
+  }
+
+  // ── Sin nombre + tamaño ridículo → basura (defensivo)
+  if (!fileName && sizeBytes < 50 * 1024) {
     return { ok: false, reason: 'too-small-no-name' };
   }
 
-  return { ok: true, reason: 'ok', fileName };
+  return {
+    ok: true,
+    reason: 'ok',
+    fileName,
+    category: cat.category,
+    extension: cat.extension,
+  };
 }
 
 // ────────────────────────────────────────────────────────────
 // INFO DE CATEGORÍAS
 // ────────────────────────────────────────────────────────────
 const CATEGORY_META = {
-  libros:       { icon: '📚', label: 'Libros / Ebooks' },
-  videos:       { icon: '🎬', label: 'Películas / Videos' },
-  audio:        { icon: '🎵', label: 'Música / Audio' },
-  imagenes:     { icon: '🖼️', label: 'Imágenes' },
-  comprimidos:  { icon: '📦', label: 'Archivos comprimidos' },
-  software:     { icon: '💿', label: 'Software / Apps' },
-  documentos:   { icon: '📄', label: 'Documentos' },
-  juegos:       { icon: '🎮', label: 'Juegos / ROMs' },
-  otros:        { icon: '⚙️', label: 'Otros' },
+  libros:      { icon: '📚', label: 'Libros / Ebooks' },
+  videos:      { icon: '🎬', label: 'Películas / Videos' },
+  audio:       { icon: '🎵', label: 'Música / Audio' },
+  imagenes:    { icon: '🖼️', label: 'Imágenes' },
+  comprimidos: { icon: '📦', label: 'Archivos comprimidos' },
+  software:    { icon: '💿', label: 'Software / Apps' },
+  documentos:  { icon: '📄', label: 'Documentos' },
+  juegos:      { icon: '🎮', label: 'Juegos / ROMs' },
+  otros:       { icon: '⚙️', label: 'Otros' },
 };
 
 function listCategories() {
@@ -275,6 +333,7 @@ function listCategories() {
       icon: CATEGORY_META[cat].icon,
       label: CATEGORY_META[cat].label,
       extensions: EXT_MAP[cat] || [],
+      minSizeMB: minSizeMBFor(cat),
     });
   }
   return out;
@@ -288,6 +347,12 @@ module.exports = {
   categorizeByMime,
   categorizeByName,
   listCategories,
+  minSizeMBFor,
   EXT_MAP,
   CATEGORY_META,
+  // umbrales expuestos por si el scanner los quiere mostrar
+  MIN_VIDEO_MB,
+  MIN_VIDEO_SEC,
+  MIN_BOOK_MB,
+  MIN_GENERIC_MB,
 };

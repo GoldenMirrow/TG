@@ -18,7 +18,7 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
-const { startWhatsApp, sendMessage, stopWhatsApp, getSocket } = require('./connection');
+const { startWhatsApp, sendMessage, stopWhatsApp, getSocket } = require('./whatsapp');
 
 let sock = null;
 const chats = new Map();

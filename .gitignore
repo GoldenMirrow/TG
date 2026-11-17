@@ -1,58 +1,93 @@
-# Dependencias
+# ═══════════════════════════════════════════════════════════
+#  DEPENDENCIAS
+# ═══════════════════════════════════════════════════════════
 node_modules/
 .pnpm-store/
-
-# Sesion de Telegram
-*.session
-session/
-.session
-
-# Lockfiles de otros gestores (usamos pnpm)
+.pnpm-debug.log
 package-lock.json
 yarn.lock
+# pnpm-lock.yaml SÍ se sube (es el lockfile del proyecto)
 
-# Sesión de WhatsApp (¡CRÍTICO - no subir!)
+# ═══════════════════════════════════════════════════════════
+#  SECRETOS — NUNCA SUBIR
+# ═══════════════════════════════════════════════════════════
+.env
+.env.*
+!.env.example
+.session
+*.session
+session/
 wa_auth/
 auth_info_baileys/
 .baileys/
+*.pem
+*.key
+config.local.json
+.npmrc
 
-# Base de datos local
-files.db
+# ═══════════════════════════════════════════════════════════
+#  BASES DE DATOS (¡38 GB de datos privados!)
+# ═══════════════════════════════════════════════════════════
+data/
+data.json
+*.db
+*.db.bak
+*.db.bak-*
 *.sqlite
 *.sqlite3
+files.db
 
-# Archivos descargados / temporales
+# ═══════════════════════════════════════════════════════════
+#  ARCHIVOS DESCARGADOS / CACHE
+# ═══════════════════════════════════════════════════════════
 downloads/
 temp/
 tmp/
 *.tmp
+thumbnails/
+data/thumbnails/
 
-# Logs
+# ═══════════════════════════════════════════════════════════
+#  LOGS Y BASURA DE PROCESOS EN BACKGROUND
+# ═══════════════════════════════════════════════════════════
 logs/
 *.log
 npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
+nohup.out
+thumbs*.log
+report.txt
 
-# Variables de entorno y secretos
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-config.local.json
+# ═══════════════════════════════════════════════════════════
+#  BACKUPS Y ARCHIVOS TEMPORALES
+# ═══════════════════════════════════════════════════════════
+*.bak
+*.bak-*
+*.old
+*.orig
 
-# Sistema operativo
+# ═══════════════════════════════════════════════════════════
+#  SCRIPTS DE DIAGNÓSTICO TEMPORALES
+# ═══════════════════════════════════════════════════════════
+diag*.js
+check-*.js
+test-*.js
+scratch*.js
+
+# ═══════════════════════════════════════════════════════════
+#  CACHÉ Y SISTEMA
+# ═══════════════════════════════════════════════════════════
+.cache/
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# Editores
+# ═══════════════════════════════════════════════════════════
+#  EDITORES
+# ═══════════════════════════════════════════════════════════
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# Caché
-.cache/
-.pnpm-debug.log
+*~
